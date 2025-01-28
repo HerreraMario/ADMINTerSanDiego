@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Administración</title>
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f7f7f7;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            color: #333;
+        }
+        h2 {
+            color: #555;
+            margin-bottom: 10px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        .enable-btn, .disable-btn {
+            padding: 8px 16px;
+            cursor: pointer;
+        }
+        .enable-btn {
+            background-color: #28a745;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+        }
+        .disable-btn {
+            background-color: #dc3545;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+        }
+        .admin-btn {
+            padding: 8px 16px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            margin-left: 10px;
+        }
+
+        #adminList {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #e9ecef;
+            width: fit-content;
+            text-align: left;
+        }
+
+        .admin-item {
+            color: #007bff;
+            font-weight: bold;
+        }
+
+        /* Estilos responsivos */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 24px;
+            }
+            h2 {
+                font-size: 18px;
+            }
+            th, td {
+                padding: 8px;
+                font-size: 14px;
+            }
+            .enable-btn, .disable-btn, .admin-btn {
+                padding: 6px 10px;
+                font-size: 12px;
+            }
+            table {
+                width: 100%;
+                overflow-x: auto;
+                display: block;
+            }
+            .btn-group {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 5px;
+            }
+            #adminList {
+                width: 100%;
+            }
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <h1>Panel de Administración</h1>
+    <h2 id="locationName"></h2>
+    <div id="adminList"><h3>Administradores:</h3></div>
+    <table id="usersTable">
+        <thead>
+            <tr>
+                <th>Correo Electrónico</th>
+                <th>Habilitado</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Filas generadas dinámicamente -->
+        </tbody>
+    </table>
+</body>
+</html>
+<script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.6.1/firebase-database.js"></script>
+<script>
+    const currentLocation = "TerSanDiego"; // Cambia esta variable según la ubicación actual
+    let currentUserEmail = null;
+
+    // Configurar el nombre de la localidad en la interfaz de usuario
+    document.addEventListener("DOMContentLoaded", function() {
+        document.getElementById('locationName').textContent = currentLocation;
+    });
+
+    // Configuración de Firebase
+    const firebaseConfig = {
+        apiKey: "AIzaSyCJr9tURp9eHXbxmV8-1tAZAt_q02N80r8",
+        authDomain: "control-ce52d.firebaseapp.com",
+        databaseURL: "https://control-ce52d-default-rtdb.firebaseio.com",
+        projectId: "control-ce52d",
+        storageBucket: "control-ce52d.appspot.com",
+        messagingSenderId: "920744747254",
+        appId: "1:920744747254:web:ca7e88528f3d6a4b368cd7"
+    };
+
+    // Inicializar Firebase
+    firebase.initializeApp(firebaseConfig);
+
+    // Verificar si el usuario es administrador
+    firebase.auth().onAuthStateChanged((user) => {
+        if (user) {
+            currentUserEmail = user.email;
+            const emailKey = user.email.replace(/\./g, ',');
+            console.log(`Usuario autenticado: ${user.email}`);
+            firebase.database().ref(`${currentLocation}/usuarios/${emailKey}`).on('value', (snapshot) => {
+                const userData = snapshot.val();
+                if (userData && userData.isAdmin) {
+                    console.log('Usuario es administrador');
+                    loadUsersAndAdmins(user.email); // Cargar usuarios y administradores
+                } else {
+                    console.log('Usuario no es administrador o no está habilitado');
+                    alert('Acceso denegado. No eres administrador.');
+                    firebase.auth().signOut();
+                    window.close(); // Cerrar la ventana
+                }
+            });
+        } else {
+            console.log('Usuario no autenticado');
+            alert('Por favor, inicia sesión.');
+            window.location.href = 'index.html'; // Redirigir a la página de inicio de sesión
+        }
+    });
+
+    // Cargar usuarios y administradores en tiempo real
+    function loadUsersAndAdmins() {
+        const adminList = document.getElementById('adminList');
+        const usersTable = document.getElementById('usersTable').getElementsByTagName('tbody')[0];
+        const seenAdmins = new Set();
+        adminList.innerHTML = ''; // Limpiar lista de administradores
+        usersTable.innerHTML = ''; // Limpiar tabla
+
+        firebase.database().ref(`${currentLocation}/usuarios`).on('value', (snapshot) => {
+            usersTable.innerHTML = ''; // Limpiar tabla
+            adminList.innerHTML = ''; // Limpiar lista de administradores
+            snapshot.forEach((childSnapshot) => {
+                const email = childSnapshot.key.replace(/,/g, '.');
+                const user = childSnapshot.val();
+
+                if (user.isAdmin) {
+                    // Actualizar la lista de administradores
+                    if (user.enabled && !seenAdmins.has(email)) {
+                        const adminItem = document.createElement('div');
+                        adminItem.textContent = email;
+                        adminItem.className = 'admin-item';
+                        adminList.appendChild(adminItem);
+                        seenAdmins.add(email);
+                    } else if (!user.enabled && seenAdmins.has(email)) {
+                        // Eliminar administrador deshabilitado de la lista
+                        const adminItems = document.querySelectorAll('.admin-item');
+                        adminItems.forEach(item => {
+                            if (item.textContent === email) {
+                                adminList.removeChild(item);
+                            }
+                        });
+                        seenAdmins.delete(email);
+                    }
+                } else {
+                    // Actualizar la tabla de usuarios
+                    const existingRow = document.querySelector(`#usersTable tbody [data-email="${email}"]`);
+                    if (existingRow) {
+                        usersTable.removeChild(existingRow);
+                    }
+
+                    const row = usersTable.insertRow();
+                    row.setAttribute('data-email', email);
+
+                    const emailCell = row.insertCell(0);
+                    const enabledCell = row.insertCell(1);
+                    const actionsCell = row.insertCell(2);
+
+                    emailCell.textContent = email;
+                    enabledCell.textContent = user.enabled ? 'Sí' : 'No';
+
+                    const enableBtn = document.createElement('button');
+                    enableBtn.textContent = 'Habilitar';
+                    enableBtn.className = 'enable-btn';
+                    enableBtn.onclick = () => updateUserEnabled(email, true);
+
+                    const disableBtn = document.createElement('button');
+                    disableBtn.textContent = 'Deshabilitar';
+                    disableBtn.className = 'disable-btn';
+                    disableBtn.onclick = () => updateUserEnabled(email, false);
+
+                    const btnGroup = document.createElement('div');
+                    btnGroup.className = 'btn-group';
+                    btnGroup.appendChild(enableBtn);
+                    btnGroup.appendChild(disableBtn);
+
+                    actionsCell.appendChild(btnGroup);
+                }
+            });
+        });
+    }
+
+    // Actualizar el estado habilitado del usuario y actualizar la interfaz en tiempo real
+    function updateUserEnabled(email, enabled) {
+        const emailKey = email.replace(/\./g, ',');
+        firebase.database().ref(`${currentLocation}/usuarios/${emailKey}`).update({ enabled: enabled })
+            .then(() => {
+                console.log(`Estado de ${email} actualizado a ${enabled}`);
+                alert('Estado del usuario actualizado con éxito.');
+                loadUsersAndAdmins(); // Recargar la lista de usuarios y administradores
+            })
+            .catch((error) => {
+                console.error('Error al actualizar el estado del usuario:', error);
+                alert('Error al actualizar el estado del usuario: ' + error.message);
+            });
+    }
+
+    // Llamada inicial para cargar los usuarios y administradores
+    loadUsersAndAdmins();
+</script>
